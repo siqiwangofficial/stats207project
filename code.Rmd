@@ -1,0 +1,75 @@
+---
+title: "Stats207 Final Project Code"
+output: html_document
+date: "2024-06-02"
+---
+
+```{r}
+data = read.csv("data.csv")
+str(data)
+# interested in daily changes: extracted hourly values at hour = 12
+data = data[data$hour == 12, ]
+```
+
+```{r}
+# hourly pm2.5
+y = ts(data$pm2.5) 
+
+# filling NAs 
+# method1: forward then backward filling
+library(zoo)
+y_forward_filled = na.locf(y, na.rm = FALSE)
+y_backward_filled = na.locf(y_forward_filled, fromLast = TRUE)
+y = y_backward_filled
+
+# method2: linear interpolation
+library(forecast)
+y = na.interp(y)
+
+# both methods give nearly the same results
+```
+
+original data
+```{r}
+plot(y) # does not look stationary
+acf(y, na.action = na.pass, lag.max = 100)
+pacf(y, na.action = na.pass,lag.max = 100)
+```
+
+first differencing
+```{r}
+plot(diff(y)) # d=1, looks better 
+acf(diff(y), na.action = na.pass, lag.max = 100) # q=1 or 2
+pacf(diff(y), na.action = na.pass, lag.max = 100) # decays
+```
+seasonal: ACF cuts off at 2, PACF tails off
+non-seasonal: basically nothing 
+
+```{r}
+library(astsa)
+```
+
+```{r}
+sarima(y, 0, 1, 2)
+```
+
+```{r}
+sarima(y, 1, 1, 1)
+```
+
+```{r}
+sarima(y, 1, 1, 2)
+```
+Though no obvious seasonal pattterns, try seasonal differencing
+```{r}
+sarima(y, 1, 1, 1, 1, 1, 1, 7)
+```
+
+```{r}
+sarima(y, 1, 1, 2, 1, 1, 1, 7)
+```
+
+```{r}
+sarima(y, 1, 1, 1, 0, 1, 1, 7)
+```
+
