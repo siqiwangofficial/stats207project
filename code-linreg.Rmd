@@ -73,7 +73,7 @@ summary(model)
 Diagnostics of first linear model: check for multicollinearity, heteroscedasticity, and model fit:
 
 ```{r}
-vif(model)
+# vif(model)
 
 par(mfrow=c(2,2))
 plot(model)
@@ -115,8 +115,18 @@ Use backward elimination for feature selection:
 ```{r}
 library(MASS)
 
-stepwise_model <- stepAIC(full_model, direction="backward", trace=FALSE)
+stepwise_model <- stepAIC(full_model, direction="both", trace=FALSE)
 summary(stepwise_model)
+```
+
+
+### interactions
+
+```{r}
+# interactions_model <- lm(y_train ~ index + index2 + index3 + month + TEMP + DEWP + PRES + cbwd + Iws + Is + Ir +
+#                         TEMP:DEWP + TEMP:Iws + Iws:cbwd + TEMP:Ir + DEWP:Ir, data = train)
+interactions_model <- lm(y_train ~ month:TEMP:DEWP:PRES, data = train)
+summary(interactions_model)
 ```
 
 
@@ -139,6 +149,7 @@ mae = function(actuals, predictions) {
 predictions_simple = predict(model, newdata=test)
 predictions_full = predict(full_model, newdata=test)
 predictions_stepwise = predict(stepwise_model, newdata=test)
+predictions_interactions <- predict(interactions_model, newdata=test)
 
 
 # Evaluate models
@@ -155,7 +166,31 @@ cat("MAE:", mae(y_test, predictions_full), "\n\n")
 cat("Stepwise Model Evaluation:\n")
 cat("RMSE:", rmse(y_test, predictions_stepwise), "\n")
 cat("MAPE:", mape(y_test, predictions_stepwise), "\n")
-cat("MAE:", mae(y_test, predictions_stepwise), "\n")
+cat("MAE:", mae(y_test, predictions_stepwise), "\n\n")
 
+cat("Interactions Model Evaluation:\n")
+cat("RMSE:", rmse(y_test, predictions_interactions), "\n")
+cat("MAPE:", mape(y_test, predictions_interactions), "\n")
+cat("MAE:", mae(y_test, predictions_interactions), "\n\n")
+```
+
+## Residuals plots
+
+```{r}
+residuals_simple <- y_test - predictions_simple
+residuals_full <- y_test - predictions_full
+residuals_stepwise <- y_test - predictions_stepwise
+residuals_interactions <- y_test - predictions_interactions
+
+par(mfrow=c(2,2)) 
+
+plot(residuals_simple, main="Residuals for Simple Model", ylab="Residuals", xlab="Index", col='blue', pch=20)
+abline(h=0, col="red")
+plot(residuals_full, main="Residuals for Full Model", ylab="Residuals", xlab="Index", col='green', pch=20)
+abline(h=0, col="red")
+plot(residuals_stepwise, main="Residuals for Stepwise Model", ylab="Residuals", xlab="Index", col='orange', pch=20)
+abline(h=0, col="red")
+plot(residuals_interactions, main="Residuals for Interactions Model", ylab="Residuals", xlab="Index", col='purple', pch=20)
+abline(h=0, col="red")
 ```
 
