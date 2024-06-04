@@ -1,0 +1,161 @@
+---
+title: "Stats207 Final Project Code"
+output: html_document
+date: "2024-06-02"
+---
+
+```{r}
+data = read.csv("data.csv")
+str(data)
+# interested in daily changes: extracted hourly values at hour = 12
+data = data[data$hour == 12, ]
+```
+
+```{r}
+# hourly pm2.5
+y = ts(data$pm2.5) 
+
+# filling NAs 
+# method1: forward then backward filling
+library(zoo)
+y_forward_filled = na.locf(y, na.rm = FALSE)
+y_backward_filled = na.locf(y_forward_filled, fromLast = TRUE)
+y = y_backward_filled
+
+# method2: linear interpolation
+library(forecast)
+y = na.interp(y)
+
+# both methods give nearly the same results
+```
+
+original data
+```{r}
+plot(y) # does not look stationary
+acf(y, na.action = na.pass, lag.max = 100)
+pacf(y, na.action = na.pass,lag.max = 100)
+```
+
+## Linear models
+
+### polynomial + seasonal components
+
+```{r}
+library(lmtest) 
+library(car)
+library(stats)  
+```
+
+Include a time index for polynomial terms and generate seasonal dummy variables:
+
+```{r}
+data$date = as.Date(paste(data$year, data$month, data$day, sep="-"))
+data$index = as.numeric(data$date - min(data$date))
+data$index2 = data$index^2
+data$index3 = data$index^3
+data$month = as.factor(data$month)
+
+train = data[1:1460, ] #80%
+test = data[1461:nrow(data),] #20%
+y_train = ts(train$pm2.5) 
+y_test = ts(test$pm2.5) 
+y_train = na.interp(y_train)
+y_test = na.interp(y_test)
+```
+
+Fit linear regression model:
+
+```{r}
+model = lm(y_train ~ index + index2 + index3 + month, data=train)
+summary(model)
+```
+
+Diagnostics of first linear model: check for multicollinearity, heteroscedasticity, and model fit:
+
+```{r}
+vif(model)
+
+par(mfrow=c(2,2))
+plot(model)
+
+bptest(model)  # Breusch-Pagan test for heteroscedasticity
+dwtest(model)  # Durbin-Watson test for autocorrelation
+
+```
+
+
+### polynomial + seasonal components + other features
+
+Convert wind direction into categorical variable with one-hot enccoding:
+```{r}
+train = cbind(train, model.matrix(~ cbwd - 1, data=train))
+test = cbind(test, model.matrix(~ cbwd - 1, data=test))
+```
+
+Fit model:
+```{r}
+full_model = lm(y_train ~ index + index2 + index3 + month + TEMP + DEWP + PRES + Iws + cbwdNE + cbwdNW + cbwdSE + cbwdcv, data=train)
+summary(full_model)
+```
+
+
+Model diagnostics:
+
+```{r}
+library(lmtest)
+
+par(mfrow=c(2,2))
+plot(full_model)
+
+bptest(full_model)
+dwtest(full_model)
+```
+
+Use backward elimination for feature selection:
+```{r}
+library(MASS)
+
+stepwise_model <- stepAIC(full_model, direction="backward", trace=FALSE)
+summary(stepwise_model)
+```
+
+
+## Evaluate models
+
+```{r}
+rmse = function(actuals, predictions) {
+  sqrt(mean((predictions - actuals)^2))
+}
+mape = function(actuals, predictions) {
+  mean(abs((predictions - actuals) / actuals)) * 100
+}
+mae = function(actuals, predictions) {
+  mean(abs(predictions - actuals))
+}
+```
+
+```{r}
+# Predictions
+predictions_simple = predict(model, newdata=test)
+predictions_full = predict(full_model, newdata=test)
+predictions_stepwise = predict(stepwise_model, newdata=test)
+
+
+# Evaluate models
+cat("Simple polynomial model Evaluation:\n")
+cat("RMSE:", rmse(y_test, predictions_simple), "\n")
+cat("MAPE:", mape(y_test, predictions_simple), "\n")
+cat("MAE:", mae(y_test, predictions_simple), "\n\n")
+
+cat("Full Model Evaluation:\n")
+cat("RMSE:", rmse(y_test, predictions_full), "\n")
+cat("MAPE:", mape(y_test, predictions_full), "\n")
+cat("MAE:", mae(y_test, predictions_full), "\n\n")
+
+cat("Stepwise Model Evaluation:\n")
+cat("RMSE:", rmse(y_test, predictions_stepwise), "\n")
+cat("MAPE:", mape(y_test, predictions_stepwise), "\n")
+cat("MAE:", mae(y_test, predictions_stepwise), "\n")
+
+```
+
