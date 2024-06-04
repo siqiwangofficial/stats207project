@@ -9,38 +9,43 @@ data = read.csv("data.csv")
 str(data)
 # interested in daily changes: extracted hourly values at hour = 12
 data = data[data$hour == 12, ]
+# train/test split 
+train = data[1:1460, ] #80%
+test = data[1461:1826,] #20%
 ```
 
 ```{r}
 # hourly pm2.5
-y = ts(data$pm2.5) 
+y_train = ts(train$pm2.5) 
+y_test = ts(test$pm2.5) 
 
 # filling NAs 
 # method1: forward then backward filling
-library(zoo)
-y_forward_filled = na.locf(y, na.rm = FALSE)
-y_backward_filled = na.locf(y_forward_filled, fromLast = TRUE)
-y = y_backward_filled
+# library(zoo)
+# y_forward_filled = na.locf(y, na.rm = FALSE)
+# y_backward_filled = na.locf(y_forward_filled, fromLast = TRUE)
+# y = y_backward_filled
 
 # method2: linear interpolation
 library(forecast)
-y = na.interp(y)
+y_train = na.interp(y_train)
+y_test = na.interp(y_test)
 
 # both methods give nearly the same results
 ```
 
-original data
+ARIMA
 ```{r}
-plot(y) # does not look stationary
-acf(y, na.action = na.pass, lag.max = 100)
-pacf(y, na.action = na.pass,lag.max = 100)
+plot(y_train) # does not look stationary
+acf(y_train, na.action = na.pass, lag.max = 100)
+pacf(y_train, na.action = na.pass,lag.max = 100)
 ```
 
 first differencing
 ```{r}
-plot(diff(y)) # d=1, looks better 
-acf(diff(y), na.action = na.pass, lag.max = 100) # q=1 or 2
-pacf(diff(y), na.action = na.pass, lag.max = 100) # decays
+plot(diff(y_train)) # d=1, looks better 
+acf(diff(y_train), na.action = na.pass, lag.max = 100) # q=1 or 2
+pacf(diff(y_train), na.action = na.pass, lag.max = 100) # decays
 ```
 seasonal: ACF cuts off at 2, PACF tails off
 non-seasonal: basically nothing 
@@ -50,26 +55,103 @@ library(astsa)
 ```
 
 ```{r}
-sarima(y, 0, 1, 2)
+sarima(y_train, 0, 1, 2)
 ```
 
 ```{r}
-sarima(y, 1, 1, 1)
+sarima(y_train, 1, 1, 1)
 ```
 
 ```{r}
-sarima(y, 1, 1, 2)
+sarima(y_train, 1, 1, 2)
 ```
 Though no obvious seasonal pattterns, try seasonal differencing
 ```{r}
-sarima(y, 1, 1, 1, 1, 1, 1, 7)
+sarima(y_train, 1, 1, 1, 1, 1, 1, 7)
 ```
 
 ```{r}
-sarima(y, 1, 1, 2, 1, 1, 1, 7)
+sarima(y_train, 1, 1, 2, 1, 1, 1, 7)
 ```
 
 ```{r}
-sarima(y, 1, 1, 1, 0, 1, 1, 7)
+sarima(y_train, 1, 1, 1, 0, 1, 1, 7)
 ```
 
+Prophet
+```{r}
+# install.packages('prophet')
+library(prophet)
+```
+
+```{r}
+train$time = as.Date(paste(train$year, train$month, train$day, sep = "-"), "%Y-%m-%d")
+df_train = data.frame(ds = train$time, y = y_train, DEWP = train$DEWP, TEMP = train$TEMP, PRES = train$PRES, Iws = train$Iws)
+test$time = as.Date(paste(test$year, test$month, test$day, sep = "-"), "%Y-%m-%d")
+df_test = data.frame(ds = test$time, y = y_test, DEWP = test$DEWP, TEMP = test$TEMP, PRES = test$PRES, Iws = test$Iws)
+```
+
+```{r}
+m = prophet()
+m$daily.seasonality = TRUE
+m$weekly.seasonality = "auto"
+m$yearly.seasonality = "auto"
+m$seasonality.prior.scale = 10
+m$changepoint.prior.scale = 0.05
+m = add_regressor(m, 'DEWP') # add regressor
+m = add_regressor(m, 'TEMP') # add regressor
+m = add_regressor(m, 'PRES') # add regressor
+m = add_regressor(m, 'Iws') # add regressor
+m = fit.prophet(m, df_train)
+```
+
+```{r}
+future = make_future_dataframe(m, periods = 366, freq = "day")
+future$DEWP = data$DEWP
+future$TEMP = data$TEMP
+future$PRES = data$PRES
+future$Iws = data$Iws
+forecast = predict(m, future)
+
+# Plot the forecast
+plot(m, forecast)
+prophet_pred = forecast[1461:1826, 'yhat']
+```
+
+Metrics
+```{r}
+rmse = function(actuals, predictions) {
+  return(sqrt(mean((predictions - actuals)^2)))
+}
+mape = function(actuals, predictions) {
+  mape = mean(abs((predictions - actuals) / actuals)) * 100
+  return(mape)
+}
+mae <- function(actuals, predictions) {
+  return(mean(abs(predictions - actuals)))
+}
+```
+
+```{r}
+rmse(y_test, prophet_pred)
+mape(y_test, prophet_pred)
+mae(y_test, prophet_pred)
+```
+
+```{r}
+rmse(y_test, prophet_pred)
+mape(y_test, prophet_pred)
+mae(y_test, prophet_pred)
+```
+
+```{r}
+rmse(y_test, prophet_pred)
+mape(y_test, prophet_pred)
+mae(y_test, prophet_pred)
+```
+
+```{r}
+rmse(y_test, prophet_pred)
+mape(y_test, prophet_pred)
+mae(y_test, prophet_pred)
+```
