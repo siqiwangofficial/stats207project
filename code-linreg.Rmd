@@ -54,6 +54,7 @@ data$index = as.numeric(data$date - min(data$date))
 data$index2 = data$index^2
 data$index3 = data$index^3
 data$month = as.factor(data$month)
+data$month2 = data$month^2
 
 train = data[1:1460, ] #80%
 test = data[1461:nrow(data),] #20%
@@ -66,7 +67,7 @@ y_test = na.interp(y_test)
 Fit linear regression model:
 
 ```{r}
-model = lm(y_train ~ index + index2 + index3 + month, data=train)
+model = lm(y_train ~ month - 1, data=train)
 summary(model)
 ```
 
@@ -111,7 +112,7 @@ bptest(full_model)
 dwtest(full_model)
 ```
 
-Use backward elimination for feature selection:
+Ridge regression
 ```{r}
 library(MASS)
 
@@ -125,7 +126,7 @@ summary(stepwise_model)
 ```{r}
 # interactions_model <- lm(y_train ~ index + index2 + index3 + month + TEMP + DEWP + PRES + cbwd + Iws + Is + Ir +
 #                         TEMP:DEWP + TEMP:Iws + Iws:cbwd + TEMP:Ir + DEWP:Ir, data = train)
-interactions_model <- lm(y_train ~ month:TEMP:DEWP:PRES, data = train)
+interactions_model <- lm(y_train ~ month + DEWP + Iws + TEMP - 1, data = train)
 summary(interactions_model)
 ```
 
@@ -174,6 +175,37 @@ cat("MAPE:", mape(y_test, predictions_interactions), "\n")
 cat("MAE:", mae(y_test, predictions_interactions), "\n\n")
 ```
 
+### short term metrics
+
+```{r}
+y_test_subset = y_test[1:7]
+predictions_simple_subset = predictions_simple[1:7]
+predictions_full_subset = predictions_full[1:7]
+predictions_stepwise_subset = predictions_stepwise[1:7]
+predictions_interactions_subset = predictions_interactions[1:7]
+
+cat("Simple polynomial model Evaluation for the first 7 data points:\n")
+cat("RMSE:", rmse(y_test_subset, predictions_simple_subset), "\n")
+cat("MAPE:", mape(y_test_subset, predictions_simple_subset), "\n")
+cat("MAE:", mae(y_test_subset, predictions_simple_subset), "\n\n")
+
+cat("Full Model Evaluation for the first 7 data points:\n")
+cat("RMSE:", rmse(y_test_subset, predictions_full_subset), "\n")
+cat("MAPE:", mape(y_test_subset, predictions_full_subset), "\n")
+cat("MAE:", mae(y_test_subset, predictions_full_subset), "\n\n")
+
+cat("Stepwise Model Evaluation for the first 7 data points:\n")
+cat("RMSE:", rmse(y_test_subset, predictions_stepwise_subset), "\n")
+cat("MAPE:", mape(y_test_subset, predictions_stepwise_subset), "\n")
+cat("MAE:", mae(y_test_subset, predictions_stepwise_subset), "\n\n")
+
+cat("Interactions Model Evaluation for the first 7 data points:\n")
+cat("RMSE:", rmse(y_test_subset, predictions_interactions_subset), "\n")
+cat("MAPE:", mape(y_test_subset, predictions_interactions_subset), "\n")
+cat("MAE:", mae(y_test_subset, predictions_interactions_subset), "\n\n")
+```
+
+
 ## Residuals plots
 
 ```{r}
@@ -181,16 +213,40 @@ residuals_simple <- y_test - predictions_simple
 residuals_full <- y_test - predictions_full
 residuals_stepwise <- y_test - predictions_stepwise
 residuals_interactions <- y_test - predictions_interactions
+residuals_ridge <- y_test - predictions_ridge
 
-par(mfrow=c(2,2)) 
+# par(mfrow=c(2,1)) 
 
-plot(residuals_simple, main="Residuals for Simple Model", ylab="Residuals", xlab="Index", col='blue', pch=20)
+plot(residuals_simple, main="Residuals for Baseline Model", ylab="Residuals", xlab="Time", pch=20)
 abline(h=0, col="red")
-plot(residuals_full, main="Residuals for Full Model", ylab="Residuals", xlab="Index", col='green', pch=20)
+plot(residuals_ridge, main="Residuals for Ridge Model", ylab="Residuals", xlab="Time", pch=20)
 abline(h=0, col="red")
-plot(residuals_stepwise, main="Residuals for Stepwise Model", ylab="Residuals", xlab="Index", col='orange', pch=20)
-abline(h=0, col="red")
-plot(residuals_interactions, main="Residuals for Interactions Model", ylab="Residuals", xlab="Index", col='purple', pch=20)
-abline(h=0, col="red")
+# plot(residuals_stepwise, main="Residuals for Stepwise Model", ylab="Residuals", xlab="Index", col='orange', pch=20)
+# abline(h=0, col="red")
+# plot(residuals_interactions, main="Residuals for Interactions Model", ylab="Residuals", xlab="Index", col='purple', pch=20)
+# abline(h=0, col="red")
 ```
+
+```{r}
+library(glmnet)
+
+x <- model.matrix(~ month + DEWP + Iws + TEMP - 1, data = train)
+y <- y_train
+
+ridge_model <- glmnet(x, y, alpha = 0)
+predictions_ridge <- predict(ridge_model, s=0.1, newx = model.matrix(~ month + DEWP + Iws + TEMP - 1, data = test))
+predictions_ridge_subset <- predictions_ridge[1:7]
+
+cat("Ridge Regression Model Evaluation:\n")
+cat("RMSE:", rmse(y_test, predictions_ridge), "\n")
+cat("MAPE:", mape(y_test, predictions_ridge), "\n")
+cat("MAE:", mae(y_test, predictions_ridge), "\n\n")
+
+cat("Ridge Regression Model Evaluation for the first 7 data points:\n")
+cat("RMSE:", rmse(y_test_subset, predictions_ridge_subset), "\n")
+cat("MAPE:", mape(y_test_subset, predictions_ridge_subset), "\n")
+cat("MAE:", mae(y_test_subset, predictions_ridge_subset), "\n\n")
+```
+
+
 
